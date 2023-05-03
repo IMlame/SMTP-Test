@@ -2,49 +2,142 @@ package main
 
 import (
 	"SMTP-VALIDATOR/network"
+	"SMTP-VALIDATOR/ports"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
 
+	"github.com/shuque/dane"
 	"golang.org/x/net/idna"
 )
 
-func HandleSMTPScanRequest(Hostname string) (SMTPRecord, error) {
-	hostname := "gmail.com"
+func HandleSMTPScanRequest(hostname string) (SMTPRecord, error) {
 	hostname, err := idna.ToASCII(hostname)
 	record := SMTPRecord{}
 	if err != nil {
 		panic("Unable to convert hostname to ascii: " + err.Error())
 	}
+	record.Hostname = hostname
 	fmt.Printf("Hostname: %s\n", hostname)
-	// Retrieve TXT record
+	// query for TXT record
 	txtRecord, err := net.LookupTXT(hostname)
 	if err != nil {
-		fmt.Printf("Failed to retrieve txt record for domain name" + err.Error() + "\n")
-		// return SMTPRecord{}, errors.New("Failed to lookup text record")
+		panic("Unable to resolve txt record: " + err.Error())
 	}
 	record.TextRecord = txtRecord
-	fmt.Printf("Text record: %s\n", &txtRecord)
-	// Retrieve MX record
+	// query for MX records and retrieve servers with resolved IPs
+	hostsIPs, err := retrieveMXRecordsWithIPs(hostname)
+	if err != nil {
+		panic("Failed to retrieve MX Records: " + err.Error())
+	}
+	for name, IPs := range hostsIPs {
+		record.MXHostnames = append(record.MXHostnames, name)
+		for _, IP := range IPs {
+			record.ResolvedIPs = append(record.ResolvedIPs, IP.String())
+		}
+	}
+
+	// TODO: check mail servers for TLS status
+	// record, err = RetrieveTLSStatus(hostsIPs)
+	// if err != nil {
+	// 	panic("Unable to retrieve TLS status: " + err.Error())
+	// }
+	// retrieve TLSA
+	record.MXHostnameTLSARecords = verifyIPsWithTLSARecords(hostsIPs)
+	return record, nil
+}
+
+// Given mail server hostname, return corresponding mail servers mapped to resolved IPs
+func retrieveMXRecordsWithIPs(hostname string) (map[string][]net.IP, error) {
+	// Retrieve MX records
+	hostsIPs := make(map[string][]net.IP, 0) // hostname : IPs
 	mxList, err := net.LookupMX(hostname)
 	if err != nil {
 		fmt.Printf("Failed to retrieve mx record for domain name" + err.Error() + "\n")
-		return SMTPRecord{}, errors.New("failed to lookup mail record")
+		return hostsIPs, errors.New("failed to lookup mail record")
 	}
 	// Retrieve all IPs from MXs
-	hostsIPs := make(map[string][]net.IP, 0)
 	for _, mx := range mxList {
 		fmt.Printf("Resolving mx host: %s\n", mx.Host)
 		IPs, err := network.ResolveIPAddresses(mx.Host)
 		if err != nil {
-			fmt.Print("Error resolving mx host: " + err.Error())
+			//fmt.Print("Error resolving mx host: " + err.Error())
 			continue
 		}
 		hostsIPs[mx.Host] = IPs
 	}
-	// Dial every IP and test for TLS (maybe piggyback off TLS-Scanner)
+	return hostsIPs, err
+}
+
+// Given a map of mail server hostnames and IPs, resolve TLSA status for each hostname
+func verifyIPsWithTLSARecords(hostsIPs map[string][]net.IP) map[string]CombinedTLSARecord {
+	allTLSARecords := make(map[string]CombinedTLSARecord, 0)
+	for hostname, IPs := range hostsIPs {
+		combinedTLSARecord := CombinedTLSARecord{}
+		combinedTLSARecord.PortTLSARecord = make(map[int]TLSARecord)
+		for _, port := range ports.SMTPPorts {
+			tlsaRecord := verifySingleIPsTLSARecord(hostname, IPs, port)
+			combinedTLSARecord.PortTLSARecord[port] = tlsaRecord
+		}
+		allTLSARecords[hostname] = combinedTLSARecord
+	}
+	return allTLSARecords
+}
+
+// Given mail server, queries for tlsa record, and iterates all resolved IPs for certification, returning TLSARecord.
+// Errors on tlsa record lookup fail.
+func verifySingleIPsTLSARecord(hostname string, IPs []net.IP, port int) TLSARecord {
+	tlsaRecord := TLSARecord{}
+	tlsaRecord.Port = port
+	tlsaRecord.TLSARecordExists = false
+	tlsaRecord.TLSAIPs = make(map[string]TLSAStatusIP)
+
+	// Utilizing Google DNS (can change to cloudflare later, after ensuring proper behavior)
+	servers := []*dane.Server{dane.NewServer("", "8.8.8.8", 53)}
+	resolver := dane.NewResolver(servers)
+	tlsa, err := dane.GetTLSA(resolver, hostname, port)
+	if err != nil {
+		tlsaRecord.TLSAError = err.Error()
+
+		return tlsaRecord
+	}
+	if tlsa == nil {
+		tlsaRecord.TLSAError = "no tlsa records found"
+		return tlsaRecord
+	}
+
+	tlsaRecord.TLSARecordExists = true
+
+	for _, ip := range IPs {
+		daneconfig := dane.NewConfig(hostname, ip, port)
+		daneconfig.SetTLSA(tlsa)
+		conn, err := dane.DialTLS(daneconfig)
+		fmt.Println(conn.ConnectionState())
+		if daneconfig.TLSA != nil {
+			daneconfig.TLSA.Results()
+		}
+		if err != nil {
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, err.Error()}
+			fmt.Printf("Result: FAILED: %s\n", err.Error())
+			continue
+		}
+		conn.Close()
+		// NOTE: can check validity of certificate chain with daneconfig.Okpkix
+		if daneconfig.Okdane {
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{true, ""}
+			fmt.Printf("Result: DANE OK\n")
+		} else {
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, "failed to find matching TLSA record"}
+		}
+	}
+	return tlsaRecord
+}
+
+// Temporary: (PIGGY BACK OFF TLS-Scanner)
+func RetrieveTLSStatus(hostsIPs map[string][]net.IP) (SMTPRecord, error) {
+	// Dial every IP and test for TLS.
 	for hostname, IPs := range hostsIPs {
 		for _, IP := range IPs {
 			fmt.Printf("Dialing hostname %s with IP: %s...\n", hostname, IP.String())
@@ -65,24 +158,5 @@ func HandleSMTPScanRequest(Hostname string) (SMTPRecord, error) {
 			fmt.Printf("\tSupports TLS version %d, using suite %d\n", state.Version, state.CipherSuite)
 		}
 	}
-
-	// for _, mx := range mxList {
-	// 	mx := "alt4.gmail-smtp-in.l.google.com."
-	// 	fmt.Printf("Dialing %s...\n", mx)
-	// 	conn, err := smtp.Dial(net.JoinHostPort("172.253.113.27", "25"))
-	// 	if err != nil {
-	// 		panic("tcp error: " + err.Error())
-	// 	}
-	// 	connErr := conn.StartTLS(&tls.Config{
-	// 		ServerName: mx,
-	// 	})
-	// }
-
-	// if connErr != nil {
-	// 	fmt.Printf("\tDoes not support tls :(, skipping...\n")
-	// }
-	// state, _ := conn.TLSConnectionState()
-	// fmt.Printf("\tSupports TLS version %d, using suite %d\n", state.Version, state.CipherSuite)
-
-	return record, nil
+	return SMTPRecord{}, nil
 }
