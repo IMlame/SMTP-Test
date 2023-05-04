@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 
 	"github.com/shuque/dane"
 	"golang.org/x/net/idna"
@@ -112,17 +113,25 @@ func verifySingleIPsTLSARecord(hostname string, IPs []net.IP, port int) TLSAReco
 
 	for _, ip := range IPs {
 		daneconfig := dane.NewConfig(hostname, ip, port)
-		daneconfig.SetTLSA(tlsa)
-		conn, err := dane.DialTLS(daneconfig)
-		fmt.Println(conn.ConnectionState())
-		if daneconfig.TLSA != nil {
-			daneconfig.TLSA.Results()
-		}
+		daneconfig.TLSA = tlsa
+		conn, err := smtp.Dial(net.JoinHostPort(ip.String(), strconv.Itoa(port)))
 		if err != nil {
-			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, err.Error()}
-			fmt.Printf("Result: FAILED: %s\n", err.Error())
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, "TCP error: " + err.Error()}
 			continue
 		}
+		connErr := conn.StartTLS(&tls.Config{
+			InsecureSkipVerify: true,
+			ServerName:         hostname,
+		})
+		if connErr != nil {
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, "TLS connection error: " + connErr.Error()}
+		}
+		state, ok := conn.TLSConnectionState()
+		if !ok {
+			tlsaRecord.TLSAIPs[ip.String()] = TLSAStatusIP{false, "TLSConnectionState error"}
+		}
+		daneconfig.DANEChains = append(daneconfig.DANEChains, state.PeerCertificates)
+		dane.AuthenticateAll(daneconfig)
 		conn.Close()
 		// NOTE: can check validity of certificate chain with daneconfig.Okpkix
 		if daneconfig.Okdane {

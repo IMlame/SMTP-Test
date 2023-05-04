@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	hostname := "eugeni.torproject.org."
+	hostname := "torproject.org."
 	// port := 25
 	record, error := HandleSMTPScanRequest(hostname)
 	if error != nil {
