@@ -1,4 +1,4 @@
-package main
+package structs
 
 type SMTPRecord struct {
 	Hostname              string                        `json:"hostname"`
@@ -24,4 +24,29 @@ type TLSARecord struct {
 type TLSAStatusIP struct {
 	Verified bool   `json:"verified"` // matches a TLSA record
 	Error    string `json:"error"`
+}
+
+type MTASTSRecord struct {
+	HTTPSRecord   HTTPSRecord   `json:"httpsRecord"`
+	MTATextRecord MTATextRecord `json:"dnsRecord"`
+}
+
+type HTTPSRecord struct {
+	Version           string   `json:"mtaHTTPSVersion"`
+	Mode              string   `json:"mode"`
+	MaxAge            int      `json:"maxAge"`
+	AllowedMXPatterns []string `json:"allowedMXPatterns"`
+	Errors            []string `json:"httpsErrors"`
+	Extensions        []Pair   `json:"extensions"`
+}
+
+type MTATextRecord struct {
+	Version string   `json:"mtaTextVersion"`
+	ID      string   `json:"mtaTextID"`
+	Errors  []string `json:"mtaTextErrors"`
+}
+
+type Pair struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
