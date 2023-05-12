@@ -16,13 +16,13 @@ func HandleSMTPScanRequest(hostname string) (structs.SMTPRecord, error) {
 	}
 	record.Hostname = hostname
 	fmt.Printf("Hostname: %s\n", hostname)
-	// query for TXT record
+	// QUERY FOR TXT
 	txtRecord, err := net.LookupTXT(hostname)
 	if err != nil {
 		panic("Unable to resolve txt record: " + err.Error())
 	}
 	record.TextRecord = txtRecord
-	// query for MX records and retrieve servers with resolved IPs
+	// QUERY FOR MX + IPS
 	hostsIPs, err := retrieveMXRecordsWithIPs(hostname)
 	if err != nil {
 		panic("Failed to retrieve MX Records: " + err.Error())
@@ -33,13 +33,9 @@ func HandleSMTPScanRequest(hostname string) (structs.SMTPRecord, error) {
 			record.ResolvedIPs = append(record.ResolvedIPs, IP.String())
 		}
 	}
-
-	// TODO: check mail servers for TLS status
-	// record, err = RetrieveTLSStatus(hostsIPs)
-	// if err != nil {
-	// 	panic("Unable to retrieve TLS status: " + err.Error())
-	// }
-	// retrieve TLSA
+	// QUERY FOR TLSA
 	record.MXHostnameTLSARecords = verifyIPsWithTLSARecords(hostsIPs)
+	// QUERY FOR MTASTS
+	record.MTASTSRecord = retrieveMTASTSRecords(hostname, record.MXHostnames)
 	return record, nil
 }

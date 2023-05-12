@@ -4,8 +4,9 @@ type SMTPRecord struct {
 	Hostname              string                        `json:"hostname"`
 	TextRecord            []string                      `json:"textRecord"`
 	MXHostnames           []string                      `json:"mxHostnames"`
-	MXHostnameTLSARecords map[string]CombinedTLSARecord `json:"mxHostnameTLSARecords"`
 	ResolvedIPs           []string                      `json:"resolvedIPs"`
+	MXHostnameTLSARecords map[string]CombinedTLSARecord `json:"mxHostnameTLSARecords"`
+	MTASTSRecord          MTASTSRecord                  `json:"mtastsRecord"`
 }
 
 // Datastructure to hold all TLSARecords associated with a hostname
@@ -27,8 +28,9 @@ type TLSAStatusIP struct {
 }
 
 type MTASTSRecord struct {
-	HTTPSRecord   HTTPSRecord   `json:"httpsRecord"`
-	MTATextRecord MTATextRecord `json:"dnsRecord"`
+	HTTPSRecord    HTTPSRecord                  `json:"httpsMTASTSRecord"`
+	MTATextRecord  MTATextRecord                `json:"txtMTASTSRecord"`
+	ValidHostnames []MTASTSMailHostnameValidity `json:"validMTASTSMXs"`
 }
 
 type HTTPSRecord struct {
@@ -38,12 +40,20 @@ type HTTPSRecord struct {
 	AllowedMXPatterns []string `json:"allowedMXPatterns"`
 	Errors            []string `json:"httpsErrors"`
 	Extensions        []Pair   `json:"extensions"`
+	Valid             bool     `json:"mtaHTTPSValid"`
 }
 
 type MTATextRecord struct {
 	Version string   `json:"mtaTextVersion"`
 	ID      string   `json:"mtaTextID"`
+	Other   []Pair   `json:"mtaTextOther"`
 	Errors  []string `json:"mtaTextErrors"`
+	Valid   bool     `json:"mtaTextValid"`
+}
+
+type MTASTSMailHostnameValidity struct {
+	Hostname string `json:"mtaVerifiedHostname"`
+	Valid    bool   `json:"mtaValidHostname"`
 }
 
 type Pair struct {

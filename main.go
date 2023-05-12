@@ -7,9 +7,6 @@ import (
 
 func main() {
 	hostname := "gmail.com"
-	r := retrieveMTASTSRecords(hostname)
-	jsonData, _ := json.Marshal(r)
-	fmt.Println(string(jsonData))
 
 	record, error := HandleSMTPScanRequest(hostname)
 	if error != nil {

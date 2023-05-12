@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 )
 
 // Given mail server hostname, return corresponding mail servers mapped to resolved IPs
@@ -24,7 +25,7 @@ func retrieveMXRecordsWithIPs(hostname string) (map[string][]net.IP, error) {
 			//fmt.Print("Error resolving mx host: " + err.Error())
 			continue
 		}
-		hostsIPs[mx.Host] = IPs
+		hostsIPs[strings.TrimRight(mx.Host, ".")] = IPs
 	}
 	return hostsIPs, err
 }
