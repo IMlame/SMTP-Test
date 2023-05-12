@@ -28,32 +28,32 @@ type TLSAStatusIP struct {
 }
 
 type MTASTSRecord struct {
-	HTTPSRecord    HTTPSRecord                  `json:"httpsMTASTSRecord"`
-	MTATextRecord  MTATextRecord                `json:"txtMTASTSRecord"`
-	ValidHostnames []MTASTSMailHostnameValidity `json:"validMTASTSMXs"`
+	HTTPSRecord    HTTPSRecord                  `json:"httpsRecord"`
+	MTATextRecord  MTATextRecord                `json:"txtRecord"`
+	ValidHostnames []MTASTSMailHostnameValidity `json:"mxValidity"`
 }
 
 type HTTPSRecord struct {
-	Version           string   `json:"mtaHTTPSVersion"`
+	Version           string   `json:"version"`
 	Mode              string   `json:"mode"`
 	MaxAge            int      `json:"maxAge"`
 	AllowedMXPatterns []string `json:"allowedMXPatterns"`
 	Errors            []string `json:"httpsErrors"`
 	Extensions        []Pair   `json:"extensions"`
-	Valid             bool     `json:"mtaHTTPSValid"`
+	Valid             bool     `json:"valid"`
 }
 
 type MTATextRecord struct {
-	Version string   `json:"mtaTextVersion"`
-	ID      string   `json:"mtaTextID"`
-	Other   []Pair   `json:"mtaTextOther"`
-	Errors  []string `json:"mtaTextErrors"`
-	Valid   bool     `json:"mtaTextValid"`
+	Version string   `json:"version"`
+	ID      string   `json:"id"`
+	Other   []Pair   `json:"other"`
+	Errors  []string `json:"errors"`
+	Valid   bool     `json:"valid"`
 }
 
 type MTASTSMailHostnameValidity struct {
-	Hostname string `json:"mtaVerifiedHostname"`
-	Valid    bool   `json:"mtaValidHostname"`
+	Hostname string `json:"mx"`
+	Valid    bool   `json:"valid"`
 }
 
 type Pair struct {

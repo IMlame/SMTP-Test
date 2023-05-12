@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	hostname := "gmail.com"
+	hostname := "google.com"
 
 	record, error := HandleSMTPScanRequest(hostname)
 	if error != nil {
